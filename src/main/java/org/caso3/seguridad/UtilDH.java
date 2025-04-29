@@ -3,13 +3,14 @@ package org.caso3.seguridad;
 import java.security.*;
 import javax.crypto.*;
 import javax.crypto.spec.DHParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
 import java.security.spec.AlgorithmParameterSpec;
 
 public class UtilDH {
 
     public static AlgorithmParameterSpec generarParametrosDH() throws Exception {
         AlgorithmParameterGenerator paramGen = AlgorithmParameterGenerator.getInstance("DH");
-        paramGen.init(1024);
+        paramGen.init(2048);
         AlgorithmParameters params = paramGen.generateParameters();
         return params.getParameterSpec(DHParameterSpec.class);
     }
@@ -24,7 +25,9 @@ public class UtilDH {
         KeyAgreement acuerdo = KeyAgreement.getInstance("DH");
         acuerdo.init(privada);
         acuerdo.doPhase(publica, true);
-        return acuerdo.generateSecret("AES");
+        byte[] secretBytes = acuerdo.generateSecret();
+        byte[] keyBytes = new byte[32];
+        System.arraycopy(secretBytes, 0, keyBytes, 0, keyBytes.length);
+        return new SecretKeySpec(keyBytes, "AES");
     }
 }
-

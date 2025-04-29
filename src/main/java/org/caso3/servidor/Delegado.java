@@ -1,11 +1,17 @@
 package org.caso3.servidor;
 
-import java.io.InputStream;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.Socket;
+import java.security.*;
+import java.security.spec.X509EncodedKeySpec;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.DHParameterSpec;
+import javax.crypto.spec.IvParameterSpec;
+
+import org.caso3.seguridad.UtilCifrado;
+import org.caso3.seguridad.UtilDH;
 
 public class Delegado extends Thread {
-
     private Socket cliente;
 
     public Delegado(Socket cliente) {
@@ -14,33 +20,78 @@ public class Delegado extends Thread {
 
     @Override
     public void run() {
+        long inicioConexion = System.nanoTime();
+
         try (
-                InputStream entrada = cliente.getInputStream();
-                OutputStream salida = cliente.getOutputStream();
+                DataInputStream entrada = new DataInputStream(cliente.getInputStream());
+                DataOutputStream salida = new DataOutputStream(cliente.getOutputStream());
         ) {
-            long inicioAtencion = System.nanoTime();
+            // Servidor genera parámetros DH
+            AlgorithmParameterGenerator paramGen = AlgorithmParameterGenerator.getInstance("DH");
+            paramGen.init(1024);
+            AlgorithmParameters params = paramGen.generateParameters();
+            DHParameterSpec dhParams = params.getParameterSpec(DHParameterSpec.class);
+            KeyPair parServidor = UtilDH.generarParDH(dhParams);
 
-            byte[] buffer = new byte[1024];
-            int bytesLeidos = entrada.read(buffer);
-            String recibido = new String(buffer, 0, bytesLeidos);
-            System.out.println("Cliente dijo: " + recibido);
+            // Enviar p, g y llave pública servidor
+            byte[] pBytes = dhParams.getP().toByteArray();
+            salida.writeInt(pBytes.length);
+            salida.write(pBytes);
 
-            String respuesta = "Respuesta a: " + recibido;
-            salida.write(respuesta.getBytes());
+            byte[] gBytes = dhParams.getG().toByteArray();
+            salida.writeInt(gBytes.length);
+            salida.write(gBytes);
 
-            long finAtencion = System.nanoTime();
+            byte[] pubServidorBytes = parServidor.getPublic().getEncoded();
+            salida.writeInt(pubServidorBytes.length);
+            salida.write(pubServidorBytes);
 
-            long tiempoAtencionMs = (finAtencion - inicioAtencion) / 1_000_000;
-            System.out.println("Tiempo de atención (ms): " + tiempoAtencionMs);
+            // Recibir llave pública cliente
+            int lenClaveCliente = entrada.readInt();
+            byte[] pubClienteBytes = new byte[lenClaveCliente];
+            entrada.readFully(pubClienteBytes);
+
+            KeyFactory kf = KeyFactory.getInstance("DH");
+            PublicKey pubCliente = kf.generatePublic(new X509EncodedKeySpec(pubClienteBytes));
+
+            // Calcular llave compartida
+            SecretKey llaveMaestra = UtilDH.generarLlaveCompartida(parServidor.getPrivate(), pubCliente);
+            MessageDigest sha512 = MessageDigest.getInstance("SHA-512");
+            byte[] digest = sha512.digest(llaveMaestra.getEncoded());
+
+            SecretKey[] llavesSesion = UtilCifrado.derivarLlaves(digest);
+            SecretKey aesKey = llavesSesion[0];
+
+            System.out.println("Servidor derivó llaves AES y HMAC correctamente");
+
+            int lenIV = entrada.readInt();
+            byte[] ivBytes = new byte[lenIV];
+            entrada.readFully(ivBytes);
+            IvParameterSpec iv = new IvParameterSpec(ivBytes);
+
+            int lenCifrado = entrada.readInt();
+            byte[] cifrado = new byte[lenCifrado];
+            entrada.readFully(cifrado);
+
+            long inicioDescifrado = System.nanoTime();
+
+            // Descifrar mensaje
+            byte[] plano = UtilCifrado.descifrarAES(cifrado, aesKey, iv);
+
+            long finDescifrado = System.nanoTime();
+
+            System.out.println("Mensaje recibido y descifrado: " + new String(plano));
+
+            long duracionConexionMs = (finDescifrado - inicioConexion) / 1_000_000;
+            long duracionDescifradoMs = (finDescifrado - inicioDescifrado) / 1_000_000;
+
+            System.out.println("Duración total sesión: " + duracionConexionMs + " ms | Descifrado: " + duracionDescifradoMs + " ms");
 
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
-            try {
-                cliente.close();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
+            try { cliente.close(); } catch (IOException ex) { ex.printStackTrace(); }
         }
     }
 }
+

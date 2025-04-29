@@ -1,23 +1,37 @@
 package org.caso3.cliente;
 
+import java.util.Scanner;
+
 public class ClienteConcurrente {
 
-    public static final String HOST = "localhost";
-    public static final int PUERTO = 5000;
-
     public static void main(String[] args) {
-        int numeroClientes = 32; // valor por defecto
+        Scanner scanner = new Scanner(System.in);
+        int numeroClientes = 16;  // default value
 
-        if (args.length > 0) {
+        System.out.print("Ingrese el número de clientes (Enter para usar 16 por defecto): ");
+        String input = scanner.nextLine();
+
+        if (!input.trim().isEmpty()) {
             try {
-                numeroClientes = Integer.parseInt(args[0]);
+                numeroClientes = Integer.parseInt(input.trim());
+                if (numeroClientes <= 0) {
+                    System.out.println("El número debe ser positivo. Usando 16 por defecto.");
+                    numeroClientes = 16;
+                }
             } catch (NumberFormatException e) {
-                System.out.println("Número de clientes inválido. Usando 32 por defecto.");
+                System.out.println("Número inválido, usando 16 por defecto.");
             }
         }
 
+        System.out.println("Iniciando " + numeroClientes + " clientes...");
+
         for (int i = 0; i < numeroClientes; i++) {
-            new ClienteHilo(i + 1).start();
+            new Thread(() -> {
+                Cliente.main(null);
+            }).start();
         }
+
+        scanner.close();
     }
 }
+
