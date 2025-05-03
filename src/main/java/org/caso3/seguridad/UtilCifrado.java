@@ -30,20 +30,6 @@ public class UtilCifrado {
         return mac.doFinal(datos);
     }
 
-    public static byte[] firmar(byte[] datos, PrivateKey privada) throws Exception {
-        Signature firma = Signature.getInstance("SHA256withRSA");
-        firma.initSign(privada);
-        firma.update(datos);
-        return firma.sign();
-    }
-
-    public static boolean verificarFirma(byte[] datos, byte[] firmaBytes, PublicKey publica) throws Exception {
-        Signature firma = Signature.getInstance("SHA256withRSA");
-        firma.initVerify(publica);
-        firma.update(datos);
-        return firma.verify(firmaBytes);
-    }
-
     public static SecretKey[] derivarLlaves(byte[] digest) throws Exception {
         byte[] claveAES = new byte[32];
         byte[] claveHMAC = new byte[32];
@@ -55,5 +41,15 @@ public class UtilCifrado {
         SecretKey hmacKey = new SecretKeySpec(claveHMAC, "HmacSHA256");
 
         return new SecretKey[] { aesKey, hmacKey };
+    }
+
+    public static boolean verificarHMAC(byte[] cifID, byte[] hmacID, SecretKey macKey) {
+        try {
+            byte[] computedHmac = generarHMAC(cifID, macKey);
+            return MessageDigest.isEqual(computedHmac, hmacID);
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 }

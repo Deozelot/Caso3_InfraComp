@@ -1,6 +1,7 @@
 package org.caso3.cliente;
 
-import java.util.Scanner;
+import java.io.IOException;
+import java.util.*;
 
 public class ClienteConcurrente {
 
@@ -25,13 +26,30 @@ public class ClienteConcurrente {
 
         System.out.println("Iniciando " + numeroClientes + " clientes...");
 
+        LinkedList <Thread> clientes = new LinkedList<>();
+
         for (int i = 0; i < numeroClientes; i++) {
-            new Thread(() -> {
-                Cliente.main(null);
-            }).start();
+
+            Thread nuevo = new Thread(() -> {
+                try {
+                    Cliente.main(null);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            nuevo.start();
+            clientes.add(nuevo);
+        }
+
+        for (Thread cliente : clientes) {
+            try {
+                cliente.join();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            System.out.println("El Cliente ha terminado de ejecutarse.");
         }
 
         scanner.close();
     }
 }
-

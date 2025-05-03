@@ -1,24 +1,38 @@
 package org.caso3.cliente;
 
-import java.io.*;
-import java.net.Socket;
-import java.security.*;
-import java.security.spec.*;
-import java.util.Arrays;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.DHParameterSpec;
-import javax.crypto.spec.IvParameterSpec;
-
 import org.caso3.seguridad.UtilCifrado;
 import org.caso3.seguridad.UtilDH;
 import org.caso3.seguridad.UtilRSA;
 
+import javax.crypto.SecretKey;
+import javax.crypto.spec.DHParameterSpec;
+import javax.crypto.spec.IvParameterSpec;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.math.BigInteger;
+import java.net.Socket;
+import java.security.*;
+import java.security.spec.X509EncodedKeySpec;
 
-public class Cliente {
+public class ClienteIterativo {
 
-    public static void main(String[] args) throws IOException {
+    private Socket socket = null;
+
+    public void main(String[] args) throws IOException {
         try {
+            this.socket = new Socket("localhost", 5000);
+            System.out.println("Cliente conectado al servidor...");
+            for (int i = 0; i < 32; i++) {
+                correr32Veces();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
+    private static void correr32Veces(){
+        try {
             Socket socket = new Socket("localhost", 5000);
             System.out.println("Cliente conectado al servidor...");
 
@@ -43,9 +57,8 @@ public class Cliente {
             byte[] rta = new byte[lenRta];
             entrada.readFully(rta);
 
-            // 5a. Verificar nonce
-            byte[] R = UtilRSA.descifrarRSA(clavePublicaServidor, rta);
-            boolean valido = Arrays.equals(R, nonce);
+            // 5a. Verifica la firma
+            boolean valido = UtilRSA.verificarFirma(clavePublicaServidor, nonce, rta);
 
             // 6. Responde OK o ERROR
             salida.writeUTF(valido ? "OK" : "ERROR");
@@ -83,8 +96,8 @@ public class Cliente {
             }
             // 11a. Calcula G^y mod p y claves
             DHParameterSpec dhParams = new DHParameterSpec(
-                    new java.math.BigInteger(pBytes),
-                    new java.math.BigInteger(gBytes)
+                    new BigInteger(pBytes),
+                    new BigInteger(gBytes)
             );
 
             KeyPairGenerator kpg = KeyPairGenerator.getInstance("DH");
@@ -112,7 +125,7 @@ public class Cliente {
             salida.writeInt(ivBytes.length);
             salida.write(ivBytes);
 
-            // Paso 13: Verificar HMAC y descifrar servicios
+            // 13. Recibe mensaje cifrado y HMAC
             int lenCifrado = entrada.readInt();
             byte[] cifrado = new byte[lenCifrado];
             entrada.readFully(cifrado);
@@ -121,6 +134,7 @@ public class Cliente {
             byte[] hmac = new byte[lenHmac];
             entrada.readFully(hmac);
 
+            // Verifica HMAC
             boolean hmacValido = UtilCifrado.verificarHMAC(cifrado, hmac, macKey);
             if (!hmacValido) {
                 System.out.println("HMAC inválido.");
@@ -128,16 +142,11 @@ public class Cliente {
             }
 
             byte[] plano = UtilCifrado.descifrarAES(cifrado, aesKey, new IvParameterSpec(ivBytes));
-            String servicios = new String(plano);
-            System.out.println("Servicios recibidos:" + servicios);
+            System.out.println("Servicios recibidos: " + new String(plano));
 
-            // Elegir un servicio aleatorio
-            String[] listaServicios = servicios.split(";");
-            int indiceAleatorio = new java.util.Random().nextInt(listaServicios.length);
-            String servicioSeleccionado = listaServicios[indiceAleatorio].split(",")[0];
-
-            // Paso 14: Enviar servicio seleccionado
-            byte[] datosCif = UtilCifrado.cifrarAES(servicioSeleccionado.getBytes(), aesKey, new IvParameterSpec(ivBytes));
+            // 14. Envía ID servicio y HMAC
+            String idServicio = "SVC-01";
+            byte[] datosCif = UtilCifrado.cifrarAES(idServicio.getBytes(), aesKey, new IvParameterSpec(ivBytes));
             byte[] hmacDatos = UtilCifrado.generarHMAC(datosCif, macKey);
 
             salida.writeInt(datosCif.length);
@@ -170,4 +179,3 @@ public class Cliente {
         }
     }
 }
-

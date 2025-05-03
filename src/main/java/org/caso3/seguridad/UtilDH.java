@@ -2,32 +2,42 @@ package org.caso3.seguridad;
 
 import java.security.*;
 import javax.crypto.*;
+import javax.crypto.interfaces.DHPublicKey;
 import javax.crypto.spec.DHParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
-import java.security.spec.AlgorithmParameterSpec;
+import java.security.spec.X509EncodedKeySpec;
 
 public class UtilDH {
 
-    public static AlgorithmParameterSpec generarParametrosDH() throws Exception {
+    public static KeyPair generarParDH() throws Exception {
         AlgorithmParameterGenerator paramGen = AlgorithmParameterGenerator.getInstance("DH");
         paramGen.init(2048);
         AlgorithmParameters params = paramGen.generateParameters();
-        return params.getParameterSpec(DHParameterSpec.class);
+        DHParameterSpec dhSpec = params.getParameterSpec(DHParameterSpec.class);
+
+        KeyPairGenerator kpg = KeyPairGenerator.getInstance("DH");
+        kpg.initialize(dhSpec);
+        return kpg.generateKeyPair();
     }
 
-    public static KeyPair generarParDH(AlgorithmParameterSpec spec) throws Exception {
-        KeyPairGenerator keyGen = KeyPairGenerator.getInstance("DH");
-        keyGen.initialize(spec);
-        return keyGen.generateKeyPair();
+    public static DHParameterSpec obtenerParametros(PublicKey publicKey) throws Exception {
+        DHPublicKey dhPublic = (DHPublicKey) publicKey;
+        return dhPublic.getParams();
     }
 
-    public static SecretKey generarLlaveCompartida(PrivateKey privada, PublicKey publica) throws Exception {
+    public static PublicKey generarClavePublica(byte[] encodedKey) throws Exception {
+        X509EncodedKeySpec keySpec = new X509EncodedKeySpec(encodedKey);
+        KeyFactory kf = KeyFactory.getInstance("DH");
+        return kf.generatePublic(keySpec);
+    }
+
+    public static SecretKey generarLlaveCompartida(PrivateKey privKey, PublicKey pubKey) throws Exception {
         KeyAgreement acuerdo = KeyAgreement.getInstance("DH");
-        acuerdo.init(privada);
-        acuerdo.doPhase(publica, true);
+        acuerdo.init(privKey);
+        acuerdo.doPhase(pubKey, true);
         byte[] secretBytes = acuerdo.generateSecret();
-        byte[] keyBytes = new byte[32];
-        System.arraycopy(secretBytes, 0, keyBytes, 0, keyBytes.length);
-        return new SecretKeySpec(keyBytes, "AES");
+
+        // Create AES key directly using SecretKeySpec
+        return new SecretKeySpec(secretBytes, 0, 16, "AES");
     }
 }
